@@ -1,5 +1,8 @@
 import os,unittest,tempfile
+from datetime import timedelta
+from io import BytesIO
 from unittest.mock import patch
+from docx import Document
 from fastapi.testclient import TestClient
 from app.main import app
 
@@ -20,6 +23,60 @@ class ApiTests(unittest.TestCase):
         with TestClient(app) as other:
             self.assertIn(record,other.get('/properties').json())
             self.assertEqual(other.get('/dashboard').json()['metrics']['properties'],5)
+    def test_contract_word_download(self):
+        from app.main import today
+
+        property_row = self.client.post(
+            '/properties',
+            json={
+                'name': 'Casa Word',
+                'address': 'Calle del Documento 123',
+                'monthly_rent_cents': 725000,
+            },
+        ).json()
+        response = self.client.post(
+            f"/properties/{property_row['id']}/contract",
+            json={
+                'tenant': 'Ana Pérez',
+                'start': today().isoformat(),
+                'end': (today() + timedelta(days=365)).isoformat(),
+                'monthly_rent_cents': 725000,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.get(
+            f"/properties/{property_row['id']}/contract.docx"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            response.headers['content-type'],
+        )
+        self.assertIn('.docx', response.headers['content-disposition'])
+
+        document = Document(BytesIO(response.content))
+        text = '\n'.join(
+            paragraph.text for paragraph in document.paragraphs
+        )
+        self.assertIn('Contrato de arrendamiento', text)
+        self.assertIn('Casa Word', text)
+        self.assertIn('Ana Pérez', text)
+        self.assertIn('Tercera. Renta y forma de pago', text)
+        self.assertIn('revisión conforme a la legislación local', text)
+        self.assertEqual(len(document.tables), 1)
+        signatures = '\n'.join(
+            cell.text
+            for row in document.tables[0].rows
+            for cell in row.cells
+        )
+        self.assertIn('Propietario / arrendador', signatures)
+        self.assertIn('Cliente / arrendatario', signatures)
+
+        self.assertEqual(
+            self.client.get('/properties/no-existe/contract.docx').status_code,
+            404,
+        )
     def test_invalid_property(self):
         for amount in (0,-1,1.5,True):
             self.assertEqual(self.client.post('/properties',json={'name':'Casa','address':'Calle 123','monthly_rent_cents':amount}).status_code,422)
@@ -39,6 +96,16 @@ class ApiTests(unittest.TestCase):
     def test_lab(self):
         r=self.client.get('/lab');self.assertEqual(r.status_code,200)
         self.assertEqual(r.json()['searches'][0]['cost'],r.json()['searches'][1]['cost'])
+    def test_python_exercises(self):
+        response=self.client.get('/python-exercises')
+        self.assertEqual(response.status_code,200)
+        results=response.json()['results']
+        self.assertEqual(len(results),7)
+        self.assertEqual(results[0]['title'],'Práctica 1 · Búsqueda BFS')
+        self.assertIn('Dashboard -> Alertas -> Mantenimientos',results[0]['output'])
+        self.assertIn('Registro 1',results[1]['output'])
+        self.assertNotIn('Departamento Alameda',results[1]['output'])
+        self.assertIn('fotografia actual',results[-1]['output'])
     def test_access_key(self):
         with patch.dict(os.environ,{'RENTCONTROL_API_KEY':'demo-test'}):
             self.assertEqual(self.client.get('/dashboard').status_code,401)

@@ -42,6 +42,10 @@ class AuthTests(unittest.TestCase):
             self.client.get("/dashboard").status_code,
             401,
         )
+        self.assertEqual(
+            self.client.get("/python-exercises").status_code,
+            401,
+        )
 
         credentials = {
             "email": "admin@example.com",
@@ -103,6 +107,7 @@ class AuthTests(unittest.TestCase):
             "/alerts.csv",
             "/lab",
             "/logic",
+            "/properties/p1/contract.docx",
         ):
             self.assertEqual(
                 self.client.get(

@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Animated,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,9 +12,12 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 
 import AuthScreen from './AuthScreen';
 import PieChart from './PieChart';
+import PropertyIllustration from './PropertyIllustration';
 
 const API =
   process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
@@ -92,7 +96,7 @@ function Button({
   function animate(value: number) {
     Animated.spring(scale, {
       toValue: value,
-      useNativeDriver: true,
+      useNativeDriver: false,
       speed: 35,
     }).start();
   }
@@ -145,7 +149,7 @@ function Card({
     const animation = Animated.timing(fade, {
       toValue: 1,
       duration: 350,
-      useNativeDriver: true,
+      useNativeDriver: false,
     });
 
     animation.start();
@@ -235,6 +239,7 @@ const menu = [
   'Cómo se calculó',
   'Ayuda',
   'Laboratorio',
+  'Prácticas Python',
 ];
 
 export default function App() {
@@ -253,6 +258,8 @@ export default function App() {
   const [explanation, setExplanation] =
     useState<any>(null);
   const [lab, setLab] = useState<any>(null);
+  const [pythonResults, setPythonResults] =
+    useState<any[] | null>(null);
 
   const [selected, setSelected] = useState('');
   const [query, setQuery] = useState('');
@@ -267,6 +274,9 @@ export default function App() {
     '¿Qué pendientes debo atender hoy?',
   );
   const [answer, setAnswer] = useState('');
+  const [whatsappPhone, setWhatsappPhone] = useState('');
+  const [whatsappMessage, setWhatsappMessage] =
+    useState('Hola, te contacto desde RentControl.');
 
   const admin = user?.role === 'admin';
   const properties = data?.properties || [];
@@ -321,6 +331,7 @@ export default function App() {
     setExplanation(null);
     setUsers([]);
     setLab(null);
+    setPythonResults(null);
     setForm(null);
     setAnswer('');
     setPage('Inicio');
@@ -546,6 +557,108 @@ export default function App() {
     }
   }
 
+  async function runPythonExercises() {
+    setBusy(true);
+    setError('');
+
+    try {
+      const result = await api(
+        '/python-exercises',
+      );
+      setPythonResults(result.results);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function downloadContract(property: any) {
+    if (!property.contract_active && !property.contract) {
+      setError('Este inmueble no tiene un contrato registrado.');
+      return;
+    }
+
+    setBusy(true);
+    setError('');
+
+    try {
+      const fileName =
+        `contrato-${String(property.id).replace(/[^a-zA-Z0-9_-]/g, '')}` +
+        '.docx';
+      const url =
+        `${API}/properties/${encodeURIComponent(property.id)}/contract.docx`;
+      const headers = {
+        Authorization: token ? 'Bearer ' + token : '',
+        'X-API-Key': process.env.EXPO_PUBLIC_API_KEY || '',
+      };
+
+      if (Platform.OS === 'web') {
+        const response = await fetch(url, { headers });
+        if (!response.ok) {
+          const result = await response.json();
+          throw Error(
+            typeof result.detail === 'string'
+              ? result.detail
+              : 'No se pudo descargar el contrato Word.',
+          );
+        }
+
+        const objectUrl = URL.createObjectURL(await response.blob());
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(
+          () => URL.revokeObjectURL(objectUrl),
+          1000,
+        );
+        setNotice('El contrato Word se descargó correctamente.');
+      } else {
+        if (!FileSystem.cacheDirectory) {
+          throw Error('No se encontró una carpeta temporal para el documento.');
+        }
+
+        const file = await FileSystem.downloadAsync(
+          url,
+          FileSystem.cacheDirectory + fileName,
+          { headers },
+        );
+        if (file.status < 200 || file.status >= 300) {
+          const result = JSON.parse(
+            await FileSystem.readAsStringAsync(file.uri),
+          );
+          throw Error(
+            typeof result.detail === 'string'
+              ? result.detail
+              : 'No se pudo descargar el contrato Word.',
+          );
+        }
+
+        if (!(await Sharing.isAvailableAsync())) {
+          throw Error(
+            'Este dispositivo no permite compartir el documento Word.',
+          );
+        }
+
+        await Sharing.shareAsync(file.uri, {
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          dialogTitle: 'Guardar o compartir contrato Word',
+        });
+        setNotice('El contrato Word está listo.');
+      }
+    } catch (e: any) {
+      setError(
+        e?.message || 'No se pudo descargar el contrato Word.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function ask() {
     setBusy(true);
     setError('');
@@ -560,6 +673,48 @@ export default function App() {
       setError(e.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function openWhatsApp() {
+    const phone = whatsappPhone.replace(/\D/g, '');
+
+    if (phone.length < 8 || phone.length > 15) {
+      setError(
+        'Escribe un número de WhatsApp válido con código de país.',
+      );
+      return;
+    }
+
+    if (!whatsappMessage.trim()) {
+      setError('Escribe el mensaje que quieres enviar.');
+      return;
+    }
+
+    setError('');
+
+    try {
+      const url =
+        `https://wa.me/${phone}?text=` +
+        encodeURIComponent(whatsappMessage.trim());
+      await Linking.openURL(url);
+      setNotice(
+        'WhatsApp se abrió con el mensaje preparado. Confirma el envío en WhatsApp.',
+      );
+    } catch {
+      setError(
+        'No se pudo abrir WhatsApp. Comprueba el número e inténtalo de nuevo.',
+      );
+    }
+  }
+
+  async function openEmail() {
+    try {
+      await Linking.openURL(
+        'mailto:' + encodeURIComponent(user.email),
+      );
+    } catch {
+      setError('No se pudo abrir la aplicación de correo.');
     }
   }
 
@@ -1044,6 +1199,10 @@ export default function App() {
               )
               .map((p: any) => (
                 <Card key={p.id}>
+                  <PropertyIllustration
+                    seed={String(p.id || p.name)}
+                    label={p.name}
+                  />
                   <View style={s.between}>
                     <Text style={s.h2}>
                       {p.name}
@@ -1145,11 +1304,25 @@ export default function App() {
                             : 'Sin contrato activo')}
                       </Text>
 
-                      {p.contract && (
-                        <Text style={s.muted}>
-                          {p.contract.start} al{' '}
-                          {p.contract.end}
-                        </Text>
+                      {p.contract_active && (
+                        <>
+                          <Text style={s.muted}>
+                            {p.contract
+                              ? `${p.contract.start} al ${p.contract.end}`
+                              : 'Contrato de demostración; fechas no registradas'}
+                          </Text>
+                          <Button
+                            title={
+                              busy
+                                ? 'Preparando Word…'
+                                : 'Descargar contrato Word'
+                            }
+                            disabled={busy}
+                            onPress={() =>
+                              downloadContract(p)
+                            }
+                          />
+                        </>
                       )}
 
                       <Text style={s.h2}>
@@ -1236,11 +1409,23 @@ export default function App() {
                     'Sin nombre de inquilino capturado'}
                 </Text>
 
-                {p.contract && (
-                  <Text style={s.muted}>
-                    {p.contract.start} →{' '}
-                    {p.contract.end}
-                  </Text>
+                {p.contract_active && (
+                  <>
+                    <Text style={s.muted}>
+                      {p.contract
+                        ? `${p.contract.start} al ${p.contract.end}`
+                        : 'Contrato de demostración; fechas no registradas'}
+                    </Text>
+                    <Button
+                      title={
+                        busy
+                          ? 'Preparando Word…'
+                          : 'Descargar contrato Word'
+                      }
+                      disabled={busy}
+                      onPress={() => downloadContract(p)}
+                    />
+                  </>
                 )}
 
                 {admin && !p.contract_active && (
@@ -2093,21 +2278,47 @@ export default function App() {
                 <Button
                   title="Abrir correo"
                   secondary
-                  onPress={() =>
-                    Linking.openURL(
-                      'mailto:' +
-                        encodeURIComponent(
-                          user.email,
-                        ),
-                    )
-                  }
+                  onPress={openEmail}
                 />
 
                 <Text style={s.muted}>
-                  El teléfono y correo de soporte
-                  técnico están pendientes de
-                  configurar.
+                  Envía un mensaje a un número de
+                  WhatsApp. Incluye el código del
+                  país, por ejemplo +52. El número
+                  y el mensaje no se guardan en la
+                  aplicación.
                 </Text>
+
+                <Text style={s.label}>
+                  Número de WhatsApp
+                </Text>
+                <TextInput
+                  accessibilityLabel="Número de WhatsApp"
+                  value={whatsappPhone}
+                  onChangeText={setWhatsappPhone}
+                  placeholder="+52 55 1234 5678"
+                  keyboardType="phone-pad"
+                  style={s.input}
+                />
+
+                <Text style={s.label}>
+                  Mensaje
+                </Text>
+                <TextInput
+                  accessibilityLabel="Mensaje de WhatsApp"
+                  multiline
+                  value={whatsappMessage}
+                  onChangeText={setWhatsappMessage}
+                  style={[
+                    s.input,
+                    { minHeight: 100, textAlignVertical: 'top' },
+                  ]}
+                />
+
+                <Button
+                  title="Continuar en WhatsApp"
+                  onPress={openWhatsApp}
+                />
               </Card>
             )}
 
@@ -2329,6 +2540,49 @@ export default function App() {
                 </Card>
               </>
             )}
+          </>
+        )}
+
+        {page === 'Prácticas Python' && (
+          <>
+            {heading(
+              'Resultados de prácticas Python',
+              'Ejecuta los siete ejercicios y consulta aquí su salida completa.',
+            )}
+
+            <Card>
+              <Text style={s.body}>
+                Los resultados usan los datos actuales
+                visibles para tu cuenta y no muestran
+                nombres ni direcciones. La clasificación
+                es descriptiva; no evalúa personas ni
+                automatiza decisiones.
+              </Text>
+
+              <Button
+                title={
+                  busy
+                    ? 'Ejecutando prácticas…'
+                    : 'Ejecutar todas las prácticas'
+                }
+                disabled={busy}
+                onPress={runPythonExercises}
+              />
+            </Card>
+
+            {pythonResults?.map((result) => (
+              <Card key={result.id}>
+                <Text style={s.h2}>
+                  {result.title}
+                </Text>
+                <Text
+                  selectable
+                  style={s.codeOutput}
+                >
+                  {result.output}
+                </Text>
+              </Card>
+            ))}
           </>
         )}
       </ScrollView>
@@ -2693,6 +2947,16 @@ const s = StyleSheet.create({
     borderTopColor: '#e7eee8',
     paddingTop: 12,
     marginTop: 12,
+  },
+  codeOutput: {
+    backgroundColor: '#f4f7f5',
+    borderRadius: 10,
+    color: '#294637',
+    fontFamily: 'monospace',
+    fontSize: 12,
+    lineHeight: 19,
+    overflow: 'hidden',
+    padding: 14,
   },
   error: {
     backgroundColor: '#fff0eb',

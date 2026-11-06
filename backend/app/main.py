@@ -2,8 +2,12 @@ import csv
 import io
 import json
 import os
+import subprocess
+import sys
+import tempfile
 
 from datetime import date, datetime
+from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -11,8 +15,11 @@ import httpx
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
+from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Inches, Pt
 
 from . import property_store
 from .algorithms import (
@@ -48,6 +55,16 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+
+PYTHON_EXERCISES = (
+    ("p01BFS.py", "Práctica 1 · Búsqueda BFS"),
+    ("p02analisisdedatos_a.py", "Práctica 2A · Crear datos"),
+    ("p02explorardatosia_b.py", "Práctica 2B · Explorar datos"),
+    ("p02problemascalidaddatos_c.py", "Práctica 2C · Calidad de datos"),
+    ("p02limpiezaguardadodatos_d.py", "Práctica 2D · Limpiar datos"),
+    ("p02identificacionvariables_e.py", "Práctica 2E · Variables"),
+    ("p03primermodelo.py", "Práctica 3 · Datos para clasificación"),
+)
 
 
 def today():
@@ -438,6 +455,181 @@ def create_contract(
     return mutate_property(identifier, operation)
 
 
+@app.get("/properties/{identifier}/contract.docx")
+def download_contract(identifier: str, user=Depends(authorized)):
+    property_row = next(
+        (
+            row
+            for row in visible_properties(user)
+            if row["id"] == identifier
+        ),
+        None,
+    )
+    if not property_row or not property_row.get("contract_active"):
+        raise HTTPException(404, "Contrato no encontrado")
+
+    contract = property_row.get("contract") or {}
+    tenant = contract.get("tenant") or "Nombre por completar"
+    address = property_row.get("address") or "Domicilio por completar"
+    rent_cents = property_row.get("monthly_rent_cents")
+    rent = (
+        f"${rent_cents / 100:,.2f} MXN"
+        if rent_cents
+        else "Importe por acordar"
+    )
+    start = contract.get("start") or "Fecha de inicio por acordar"
+    end = contract.get("end") or "Fecha de término por acordar"
+
+    document = Document()
+    section = document.sections[0]
+    section.top_margin = Inches(0.7)
+    section.bottom_margin = Inches(0.7)
+    document.styles["Normal"].font.name = "Arial"
+    document.styles["Normal"].font.size = Pt(10)
+
+    title = document.add_heading("Contrato de arrendamiento", level=0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    subtitle = document.add_paragraph(
+        "Borrador para completar y revisar antes de firmar"
+    )
+    subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    document.add_paragraph(
+        "En ______________________________, a ____ de __________________ de ______, "
+        "comparecen por una parte el propietario o arrendador identificado abajo y, "
+        "por otra, el arrendatario, quienes acuerdan celebrar el presente contrato "
+        "respecto del inmueble y conforme a las cláusulas siguientes."
+    )
+    document.add_heading("Datos de las partes y del inmueble", level=1)
+    for label, value in (
+        ("Arrendador", "Nombre completo: ______________________________ · Identificación: ______________________________"),
+        ("Arrendatario", f"{tenant} · Identificación: ______________________________"),
+        ("Inmueble", property_row.get("name") or "Nombre por completar"),
+        ("Domicilio", address),
+        ("Renta mensual registrada", rent),
+        ("Vigencia registrada", f"{start} al {end}"),
+    ):
+        paragraph = document.add_paragraph()
+        paragraph.add_run(f"{label}: ").bold = True
+        paragraph.add_run(value)
+
+    clauses = (
+        (
+            "Primera. Objeto",
+            "El arrendador concede al arrendatario el uso temporal del inmueble "
+            "identificado en este documento, y el arrendatario acepta recibirlo en "
+            "las condiciones que ambas partes hagan constar por escrito al momento "
+            "de la entrega.",
+        ),
+        (
+            "Segunda. Plazo",
+            f"El plazo será del {start} al {end}. Toda renovación, prórroga o "
+            "modificación deberá acordarse por escrito por ambas partes y sujetarse "
+            "a la legislación aplicable.",
+        ),
+        (
+            "Tercera. Renta y forma de pago",
+            f"La renta mensual será de {rent}, o del importe que las partes "
+            "completen y acuerden antes de firmar. Se pagará el día ______ de cada "
+            "mes mediante ______________________________, a la cuenta o persona "
+            "que indique el arrendador. Las partes conservarán comprobantes de pago.",
+        ),
+        (
+            "Cuarta. Depósito y cargos adicionales",
+            "Depósito, servicios, mantenimiento u otros cargos: las partes deberán "
+            "indicar por escrito los importes, conceptos, responsables y condiciones "
+            "de devolución que acuerden: __________________________________________.",
+        ),
+        (
+            "Quinta. Uso y conservación",
+            "El uso autorizado del inmueble será ______________________________. El "
+            "arrendatario deberá darle el uso convenido, conservarlo razonablemente "
+            "y comunicar oportunamente daños o reparaciones necesarias. Ninguna "
+            "modificación material se realizará sin el consentimiento escrito que corresponda.",
+        ),
+        (
+            "Sexta. Obligaciones de las partes",
+            "El arrendador entregará el inmueble en la fecha acordada y atenderá las "
+            "reparaciones que legalmente le correspondan. El arrendatario pagará la "
+            "renta convenida, cuidará el inmueble y permitirá el acceso para "
+            "reparaciones o inspecciones previamente acordadas, salvo urgencia y "
+            "conforme a la ley.",
+        ),
+        (
+            "Séptima. Terminación y entrega",
+            "La terminación, avisos, causas y plazos se regirán por lo pactado por "
+            "escrito y por la legislación aplicable. Al concluir la relación, las "
+            "partes coordinarán la entrega del inmueble y documentarán su estado y "
+            "los pagos pendientes.",
+        ),
+        (
+            "Octava. Avisos y jurisdicción",
+            "Domicilio o medio de aviso del arrendador: ______________________________. "
+            "Del arrendatario: ______________________________. Para cualquier "
+            "controversia, las partes se sujetarán a las autoridades competentes "
+            "conforme a la legislación aplicable en ______________________________.",
+        ),
+    )
+
+    document.add_heading("Declaraciones y cláusulas", level=1)
+    document.add_paragraph(
+        "Las partes manifiestan que cuentan con capacidad para celebrar este acuerdo, "
+        "que revisarán y completarán la información pendiente y que recibirán una "
+        "copia firmada del documento."
+    )
+    for heading, text in clauses:
+        document.add_heading(heading, level=2)
+        document.add_paragraph(text)
+
+    document.add_paragraph(
+        "Leído el presente borrador y enteradas las partes de su contenido, lo firman "
+        "en dos ejemplares en el lugar y fecha que completen arriba."
+    )
+    document.add_heading("Firmas", level=1)
+    signatures = document.add_table(rows=2, cols=2)
+    signatures.autofit = False
+    for cell in signatures.rows[0].cells:
+        cell.width = Inches(3)
+        cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        cell.paragraphs[0].add_run("\n\n\n____________________________")
+    for cell, label in zip(
+        signatures.rows[1].cells,
+        (
+            "Propietario / arrendador\nNombre y firma",
+            f"Cliente / arrendatario\n{tenant}\nNombre y firma",
+        ),
+    ):
+        cell.width = Inches(3)
+        cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        cell.paragraphs[0].add_run(label)
+
+    notice = document.add_paragraph()
+    notice.paragraph_format.space_before = Pt(16)
+    notice.add_run(
+        "Borrador generado por RentControl. Completa todos los espacios, verifica "
+        "los datos y solicita revisión conforme a la legislación local antes de "
+        "firmar. Este formato general no constituye asesoría legal ni sustituye "
+        "un contrato revisado por un profesional."
+    ).italic = True
+
+    output = io.BytesIO()
+    document.save(output)
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type=(
+            "application/vnd.openxmlformats-officedocument."
+            "wordprocessingml.document"
+        ),
+        headers={
+            "Content-Disposition": (
+                'attachment; filename="contrato-arrendamiento.docx"'
+            ),
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 @app.post(
     "/properties/{identifier}/charges",
     dependencies=[Depends(authorized)],
@@ -703,6 +895,151 @@ def lab():
             exact(matrix),
         ],
     }
+
+
+@app.get("/python-exercises")
+def run_python_exercises(user=Depends(authorized)):
+    current = today()
+    records = []
+
+    for index, property_row in enumerate(
+        visible_properties(user),
+        start=1,
+    ):
+        charges = property_row.get("charges", [])
+        charged_cents = sum(
+            charge["amount_cents"]
+            for charge in charges
+        )
+        paid_cents = sum(
+            charge["paid_cents"]
+            for charge in charges
+        )
+        overdue_days = []
+
+        for charge in charges:
+            due = date.fromisoformat(charge["due"])
+            if (
+                charge["amount_cents"] > charge["paid_cents"]
+                and due < current
+            ):
+                overdue_days.append((current - due).days)
+
+        monthly_rent_cents = property_row.get(
+            "monthly_rent_cents"
+        )
+        if monthly_rent_cents is None:
+            monthly_rent_cents = (
+                charges[0]["amount_cents"] if charges else 0
+            )
+
+        records.append({
+            "inquilino": f"Registro {index}",
+            "tipo_inmueble": "No especificado",
+            "renta_mensual": round(monthly_rent_cents / 100),
+            "atrasos_previos": len(overdue_days),
+            "porcentaje_pagado": (
+                round(paid_cents * 100 / charged_cents)
+                if charged_cents
+                else 100
+            ),
+            "dias_atraso": max(overdue_days, default=0),
+            "mora": int(bool(overdue_days)),
+        })
+
+    scripts_dir = Path(__file__).resolve().parents[1] / "scripts"
+
+    with tempfile.TemporaryDirectory(
+        prefix="rentcontrol-exercises-"
+    ) as working_directory:
+        Path(
+            working_directory,
+            "rentcontrol_data.json",
+        ).write_text(
+            json.dumps(records, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        scripts = []
+        for filename, title in PYTHON_EXERCISES:
+            script = scripts_dir / filename
+            if not script.is_file():
+                raise HTTPException(
+                    500,
+                    f"No se encontró el ejercicio {filename}.",
+                )
+            scripts.append((str(script), title))
+
+        runner = """
+import contextlib
+import io
+import json
+import runpy
+import sys
+from pathlib import Path
+
+results = []
+for filename, title in json.loads(sys.argv[1]):
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        runpy.run_path(filename, run_name="__main__")
+    results.append({
+        "id": Path(filename).name,
+        "title": title,
+        "output": output.getvalue().strip(),
+    })
+print(json.dumps(results))
+"""
+
+        try:
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    runner,
+                    json.dumps(scripts),
+                ],
+                cwd=working_directory,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=60,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise HTTPException(
+                504,
+                "Las prácticas excedieron el tiempo límite.",
+            ) from exc
+
+        if completed.returncode != 0:
+            details = (
+                completed.stderr or completed.stdout
+            ).strip()[-2000:]
+            raise HTTPException(
+                500,
+                f"No se pudieron ejecutar las prácticas: {details}",
+            )
+
+        try:
+            results = json.loads(completed.stdout)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(
+                500,
+                "No se pudieron leer los resultados de las prácticas.",
+            ) from exc
+
+        for result in results:
+            if len(result["output"]) > 20000:
+                result["output"] = (
+                    result["output"][:20000]
+                    + "\n… salida truncada …"
+                )
+            elif not result["output"]:
+                result["output"] = "El ejercicio terminó sin salida."
+
+    return {"results": results}
 
 
 @app.get("/explanations")

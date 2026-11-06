@@ -40,12 +40,12 @@ export default function AuthScreen({
         Animated.timing(motion, {
           toValue: 1,
           duration: 7000,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
         Animated.timing(motion, {
           toValue: 0,
           duration: 7000,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
       ]),
     );
