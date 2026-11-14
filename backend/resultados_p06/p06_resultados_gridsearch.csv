@@ -1,0 +1,4 @@
+algoritmo,mejor_f1,hiperparametros,combinaciones
+Decision Tree,0.7425256333068575,"{'criterion': 'gini', 'max_depth': None, 'min_samples_leaf': 1, 'min_samples_split': 10}",8
+Random Forest,0.7711420228542524,"{'max_depth': None, 'min_samples_leaf': 3, 'min_samples_split': 2, 'n_estimators': 50}",8
+KNN,0.7462672811059907,"{'clasificador__metric': 'euclidean', 'clasificador__n_neighbors': 11, 'clasificador__weights': 'distance'}",8

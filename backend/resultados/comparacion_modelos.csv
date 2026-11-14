@@ -1,0 +1,7 @@
+profundidad,profundidad_grafica,entrenamiento,validacion
+1,1,0.76,0.79
+2,2,0.8033333333333333,0.78
+3,3,0.87,0.8
+5,5,0.9533333333333334,0.79
+10,10,1.0,0.75
+Sin limite,12,1.0,0.75
