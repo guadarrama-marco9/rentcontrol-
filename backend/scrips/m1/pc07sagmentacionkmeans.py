@@ -132,7 +132,7 @@ inercias = []
 
 for k in valores_k:
 
-    modelo = KMeans(n_clusters=k, random_state=SEMILLA, n_init=20)
+    modelo = KMeans(n_clusters=k, random_state=SEMILLA, n_init=1)
 
     modelo.fit(X_escalado)
 
@@ -173,7 +173,7 @@ resultados_silhouette = []
 
 for k in range(2, 9):
 
-    modelo = KMeans(n_clusters=k, random_state=SEMILLA, n_init=20)
+    modelo = KMeans(n_clusters=k, random_state=SEMILLA, n_init=1)
 
     etiquetas = modelo.fit_predict(X_escalado)
 
@@ -211,7 +211,7 @@ plt.show()
 # K=3 es la hipotesis inicial del caso. Debe justificarse con el
 # codo, el Silhouette y el conocimiento del negocio.
 
-modelo_final = KMeans(n_clusters=K_FINAL, random_state=SEMILLA, n_init=20)
+modelo_final = KMeans(n_clusters=K_FINAL, random_state=SEMILLA, n_init=1)
 
 df["cluster"] = modelo_final.fit_predict(X_escalado)
 

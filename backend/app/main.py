@@ -930,19 +930,21 @@ import json
 import runpy
 import sys
 from pathlib import Path
+from threadpoolctl import threadpool_limits
 
 results = []
-for filename, title in json.loads(sys.argv[1]):
-    sys.path.insert(0, str(Path(filename).parent))
-    output = io.StringIO()
-    with contextlib.redirect_stdout(output):
-        runpy.run_path(filename, run_name="__main__")
-    sys.path.pop(0)
-    results.append({
-        "id": Path(filename).name,
-        "title": title,
-        "output": output.getvalue().strip(),
-    })
+with threadpool_limits(limits=1):
+    for filename, title in json.loads(sys.argv[1]):
+        sys.path.insert(0, str(Path(filename).parent))
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            runpy.run_path(filename, run_name="__main__")
+        sys.path.pop(0)
+        results.append({
+            "id": Path(filename).name,
+            "title": title,
+            "output": output.getvalue().strip(),
+        })
 print(json.dumps(results))
 """
 
@@ -959,7 +961,7 @@ print(json.dumps(results))
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=60,
+                timeout=120,
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:

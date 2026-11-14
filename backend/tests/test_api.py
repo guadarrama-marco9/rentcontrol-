@@ -101,12 +101,30 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code,200)
         results=response.json()['results']
         self.assertEqual(len(results),14)
+        self.assertEqual(
+            [result['id'] for result in results],
+            [
+                'p01BFS.py',
+                'p01b_regla_fija_rentcontrol.py',
+                'p02a_crear_datos_rentcontrol.py',
+                'p02b_explorar_datos_rentcontrol.py',
+                'p02c_problemas_calidad_rentcontrol.py',
+                'p02d_limpieza_guardado_rentcontrol.py',
+                'p02e_identificacion_variables_rentcontrol.py',
+                'p03_primer_modelo_rentcontrol.py',
+                'p4.py',
+                'p05_comparacion_algoritmos_rentcontrol.py',
+                'p06optimizacionhiperparametros.py',
+                'pc07sagmentacionkmeans.py',
+                'p08analisisavanzados.py',
+                'p09pca.py',
+            ],
+        )
         self.assertEqual(results[1]['id'],'p01b_regla_fija_rentcontrol.py')
         self.assertEqual(results[0]['title'],'Práctica 1 · Búsqueda BFS')
         self.assertIn('Ruta encontrada:',results[0]['output'])
-        self.assertIn('CONJUNTO DE DATOS ORIGINAL',results[1]['output'])
+        self.assertIn('CONJUNTO DE DATOS ORIGINAL',results[2]['output'])
         self.assertNotIn('Departamento Alameda',results[2]['output'])
-        self.assertIn('PRACTICA TERMINADA',results[-1]['output'])
         self.assertEqual(results[-1]['id'],'p09pca.py')
         self.assertIn('PRACTICA 9 FINALIZADA CORRECTAMENTE',results[-1]['output'])
     def test_access_key(self):

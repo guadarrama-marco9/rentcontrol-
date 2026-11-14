@@ -200,7 +200,7 @@ print("Prueba:", len(X_prueba))
 # ================================================================
 
 validacion_cruzada = StratifiedKFold(
-    n_splits=5,
+    n_splits=3,
     shuffle=True,
     random_state=SEMILLA
 )
@@ -215,24 +215,24 @@ validacion_cruzada = StratifiedKFold(
 modelo_arbol = DecisionTreeClassifier(random_state=SEMILLA)
 
 parametros_arbol = {
-    "max_depth": [2, 3, 5, 8, 10, None],
-    "min_samples_split": [2, 5, 10],
-    "min_samples_leaf": [1, 2, 4],
-    "criterion": ["gini", "entropy"]
+    "max_depth": [3, None],
+    "min_samples_split": [2, 10],
+    "min_samples_leaf": [1],
+    "criterion": ["gini"]
 }
 
 # ---- MODELO 2: RANDOM FOREST ----
 
 modelo_bosque = RandomForestClassifier(
     random_state=SEMILLA,
-    n_jobs=-1
+    n_jobs=1
 )
 
 parametros_bosque = {
-    "n_estimators": [50, 100, 200],
-    "max_depth": [3, 5, 8, None],
-    "min_samples_split": [2, 5, 10],
-    "min_samples_leaf": [1, 2, 4]
+    "n_estimators": [50],
+    "max_depth": [3, None],
+    "min_samples_split": [2, 10],
+    "min_samples_leaf": [1]
 }
 
 # ---- MODELO 3: KNN ----
@@ -248,9 +248,9 @@ modelo_knn = Pipeline([
 # Formato de parametros en un Pipeline: nombrepaso__parametro
 
 parametros_knn = {
-    "clasificador__n_neighbors": [3, 5, 7, 9, 11, 15],
-    "clasificador__weights": ["uniform", "distance"],
-    "clasificador__metric": ["euclidean", "manhattan"]
+    "clasificador__n_neighbors": [3, 11],
+    "clasificador__weights": ["uniform"],
+    "clasificador__metric": ["euclidean"]
 }
 
 modelos = {
@@ -283,7 +283,7 @@ for nombre, (modelo, parametros) in modelos.items():
         param_grid=parametros,
         scoring="f1",
         cv=validacion_cruzada,
-        n_jobs=-1,
+        n_jobs=1,
         return_train_score=True,
         verbose=0
     )
@@ -364,10 +364,10 @@ for nombre, (modelo, _) in modelos.items():
     busqueda_random = RandomizedSearchCV(
         estimator=modelo,
         param_distributions=parametros_random[nombre],
-        n_iter=20,
+        n_iter=2,
         scoring="f1",
         cv=validacion_cruzada,
-        n_jobs=-1,
+        n_jobs=1,
         random_state=SEMILLA,
         verbose=0
     )

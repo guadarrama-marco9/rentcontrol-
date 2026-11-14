@@ -1,5 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, Pressable, Animated } from "react-native";
+import {
+  View,
+  Text,
+  Pressable,
+  Animated,
+  Platform,
+} from "react-native";
 import Svg, { Path, Circle, Text as SvgText } from "react-native-svg";
 type Slice = { label: string; value: number; color: string; display?: string };
 export default function PieChart({ rows }: { rows: Slice[] }) {
@@ -40,14 +46,50 @@ export default function PieChart({ rows }: { rows: Slice[] }) {
           ],
         }}
       >
-        <Svg
-          width={220}
-          height={220}
-          viewBox="0 0 220 220"
-          accessibilityLabel="Distribución en gráfica de pastel"
-        >
-          {!total && <Circle cx={110} cy={110} r={96} fill="#e8efea" />}
-          {rows.map((row, i) => {
+        {Platform.OS === "web" ? (
+          <View
+            accessibilityLabel="Distribución en gráfica de barras"
+            style={{
+              width: 220,
+              height: 220,
+              justifyContent: "center",
+              paddingHorizontal: 12,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                height: 28,
+                overflow: "hidden",
+                borderRadius: 14,
+                backgroundColor: "#e8efea",
+              }}
+            >
+              {rows.map((row) => {
+                const value = valueOf(row.value);
+                if (!value || !total) return null;
+
+                return (
+                  <View
+                    key={row.label}
+                    style={{
+                      width: `${(value / total) * 100}%`,
+                      backgroundColor: row.color,
+                    }}
+                  />
+                );
+              })}
+            </View>
+          </View>
+        ) : (
+          <Svg
+            width={220}
+            height={220}
+            viewBox="0 0 220 220"
+            accessibilityLabel="Distribución en gráfica de pastel"
+          >
+            {!total && <Circle cx={110} cy={110} r={96} fill="#e8efea" />}
+            {rows.map((row, i) => {
               const value = valueOf(row.value);
               if (!value || !total) return null;
 
@@ -106,8 +148,9 @@ export default function PieChart({ rows }: { rows: Slice[] }) {
                   )}
                 </React.Fragment>
               );
-            })}
-        </Svg>
+              })}
+          </Svg>
+        )}
       </Animated.View>
       <Text style={{ fontSize: 13, color: "#658272", marginBottom: 15 }}>
         {total

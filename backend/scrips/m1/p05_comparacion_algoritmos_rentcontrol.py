@@ -165,7 +165,7 @@ modelos = {
         n_estimators=200,
         max_depth=None,
         min_samples_leaf=2,
-        n_jobs=-1,
+        n_jobs=1,
         random_state=SEMILLA
     ),
 
@@ -323,7 +323,7 @@ resultados_cv = cross_val_score(
     y_entrenamiento_final,
     cv=particiones,
     scoring="f1",
-    n_jobs=-1
+    n_jobs=1
 )
 
 print("\n==========================================")
@@ -413,7 +413,7 @@ for k in [3, 5, 7, 9, 15]:
 # Experimento B: n_estimators de Random Forest
 for n in [50, 100, 200, 500]:
     m = RandomForestClassifier(
-        n_estimators=n, min_samples_leaf=2, n_jobs=-1, random_state=SEMILLA
+        n_estimators=n, min_samples_leaf=2, n_jobs=1, random_state=SEMILLA
     )
     experimentos.append(("B: RF n_estimators", n, f1_validacion(m)))
 
