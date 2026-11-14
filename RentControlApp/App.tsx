@@ -2547,16 +2547,14 @@ export default function App() {
           <>
             {heading(
               'Resultados de prácticas Python',
-              'Ejecuta los siete ejercicios y consulta aquí su salida completa.',
+              'Ejecuta las catorce prácticas y consulta aquí sus resultados.',
             )}
 
             <Card>
               <Text style={s.body}>
-                Los resultados usan los datos actuales
-                visibles para tu cuenta y no muestran
-                nombres ni direcciones. La clasificación
-                es descriptiva; no evalúa personas ni
-                automatiza decisiones.
+                Son ejemplos educativos con datos
+                ficticios o generados. No muestran datos
+                personales ni evalúan a los inquilinos.
               </Text>
 
               <Button

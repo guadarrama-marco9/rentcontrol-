@@ -58,12 +58,19 @@ app.include_router(auth_router)
 
 PYTHON_EXERCISES = (
     ("p01BFS.py", "Práctica 1 · Búsqueda BFS"),
-    ("p02analisisdedatos_a.py", "Práctica 2A · Crear datos"),
-    ("p02explorardatosia_b.py", "Práctica 2B · Explorar datos"),
-    ("p02problemascalidaddatos_c.py", "Práctica 2C · Calidad de datos"),
-    ("p02limpiezaguardadodatos_d.py", "Práctica 2D · Limpiar datos"),
-    ("p02identificacionvariables_e.py", "Práctica 2E · Variables"),
-    ("p03primermodelo.py", "Práctica 3 · Datos para clasificación"),
+    ("p01b_regla_fija_rentcontrol.py", "Práctica 1B · Regla fija"),
+    ("p02a_crear_datos_rentcontrol.py", "Práctica 2A · Crear datos"),
+    ("p02b_explorar_datos_rentcontrol.py", "Práctica 2B · Explorar datos"),
+    ("p02c_problemas_calidad_rentcontrol.py", "Práctica 2C · Calidad de datos"),
+    ("p02d_limpieza_guardado_rentcontrol.py", "Práctica 2D · Limpiar datos"),
+    ("p02e_identificacion_variables_rentcontrol.py", "Práctica 2E · Variables"),
+    ("p03_primer_modelo_rentcontrol.py", "Práctica 3 · Primer modelo de regresión"),
+    ("p4.py", "Práctica 4 · Entrenamiento, validación y prueba"),
+    ("p05_comparacion_algoritmos_rentcontrol.py", "Práctica 5 · Comparación de algoritmos"),
+    ("p06optimizacionhiperparametros.py", "Práctica 6 · Optimización de hiperparámetros"),
+    ("pc07sagmentacionkmeans.py", "Práctica 7 · Segmentación con K-Means"),
+    ("p08analisisavanzados.py", "Práctica 8 · Análisis avanzado de segmentos"),
+    ("p09pca.py", "Práctica 9 · Reducción de dimensionalidad (PCA)"),
 )
 
 
@@ -899,67 +906,13 @@ def lab():
 
 @app.get("/python-exercises")
 def run_python_exercises(user=Depends(authorized)):
-    current = today()
-    records = []
-
-    for index, property_row in enumerate(
-        visible_properties(user),
-        start=1,
-    ):
-        charges = property_row.get("charges", [])
-        charged_cents = sum(
-            charge["amount_cents"]
-            for charge in charges
-        )
-        paid_cents = sum(
-            charge["paid_cents"]
-            for charge in charges
-        )
-        overdue_days = []
-
-        for charge in charges:
-            due = date.fromisoformat(charge["due"])
-            if (
-                charge["amount_cents"] > charge["paid_cents"]
-                and due < current
-            ):
-                overdue_days.append((current - due).days)
-
-        monthly_rent_cents = property_row.get(
-            "monthly_rent_cents"
-        )
-        if monthly_rent_cents is None:
-            monthly_rent_cents = (
-                charges[0]["amount_cents"] if charges else 0
-            )
-
-        records.append({
-            "inquilino": f"Registro {index}",
-            "tipo_inmueble": "No especificado",
-            "renta_mensual": round(monthly_rent_cents / 100),
-            "atrasos_previos": len(overdue_days),
-            "porcentaje_pagado": (
-                round(paid_cents * 100 / charged_cents)
-                if charged_cents
-                else 100
-            ),
-            "dias_atraso": max(overdue_days, default=0),
-            "mora": int(bool(overdue_days)),
-        })
-
-    scripts_dir = Path(__file__).resolve().parents[1] / "scripts"
+    scripts_dir = (
+        Path(__file__).resolve().parents[1] / "scrips" / "m1"
+    )
 
     with tempfile.TemporaryDirectory(
         prefix="rentcontrol-exercises-"
     ) as working_directory:
-        Path(
-            working_directory,
-            "rentcontrol_data.json",
-        ).write_text(
-            json.dumps(records, ensure_ascii=False),
-            encoding="utf-8",
-        )
-
         scripts = []
         for filename, title in PYTHON_EXERCISES:
             script = scripts_dir / filename
@@ -980,9 +933,11 @@ from pathlib import Path
 
 results = []
 for filename, title in json.loads(sys.argv[1]):
+    sys.path.insert(0, str(Path(filename).parent))
     output = io.StringIO()
     with contextlib.redirect_stdout(output):
         runpy.run_path(filename, run_name="__main__")
+    sys.path.pop(0)
     results.append({
         "id": Path(filename).name,
         "title": title,

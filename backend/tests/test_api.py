@@ -100,12 +100,15 @@ class ApiTests(unittest.TestCase):
         response=self.client.get('/python-exercises')
         self.assertEqual(response.status_code,200)
         results=response.json()['results']
-        self.assertEqual(len(results),7)
+        self.assertEqual(len(results),14)
+        self.assertEqual(results[1]['id'],'p01b_regla_fija_rentcontrol.py')
         self.assertEqual(results[0]['title'],'Práctica 1 · Búsqueda BFS')
-        self.assertIn('Dashboard -> Alertas -> Mantenimientos',results[0]['output'])
-        self.assertIn('Registro 1',results[1]['output'])
-        self.assertNotIn('Departamento Alameda',results[1]['output'])
-        self.assertIn('fotografia actual',results[-1]['output'])
+        self.assertIn('Ruta encontrada:',results[0]['output'])
+        self.assertIn('CONJUNTO DE DATOS ORIGINAL',results[1]['output'])
+        self.assertNotIn('Departamento Alameda',results[2]['output'])
+        self.assertIn('PRACTICA TERMINADA',results[-1]['output'])
+        self.assertEqual(results[-1]['id'],'p09pca.py')
+        self.assertIn('PRACTICA 9 FINALIZADA CORRECTAMENTE',results[-1]['output'])
     def test_access_key(self):
         with patch.dict(os.environ,{'RENTCONTROL_API_KEY':'demo-test'}):
             self.assertEqual(self.client.get('/dashboard').status_code,401)
