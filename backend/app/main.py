@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
@@ -33,6 +34,9 @@ from .auth import identify, tenants
 from .auth import router as auth_router
 from .demo import GRID, POINTS, dataset
 from .domain import alerts, metrics, truth_table
+
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 
 app = FastAPI(
@@ -71,6 +75,11 @@ PYTHON_EXERCISES = (
     ("pc07sagmentacionkmeans.py", "Práctica 7 · Segmentación con K-Means"),
     ("p08analisisavanzados.py", "Práctica 8 · Análisis avanzado de segmentos"),
     ("p09pca.py", "Práctica 9 · Reducción de dimensionalidad (PCA)"),
+    ("p10datos_rentcontrol.py", "Práctica 10 · Generar datos de inquilinos"),
+    ("p11modelo_supervisado_rentcontrol.py", "Práctica 11 · Clasificación de morosidad"),
+    ("p12modelo_kmeans_rentcontrol.py", "Práctica 12 · Segmentación K-Means"),
+    ("p13modelo_pca_rentcontrol.py", "Práctica 13 · Reducción de dimensionalidad"),
+    ("p14motor_recomendaciones_rentcontrol.py", "Práctica 14 · Recomendaciones orientativas"),
 )
 
 
@@ -103,6 +112,15 @@ def properties():
             collection = client[
                 os.getenv("MONGO_DB", "rentcontrol")
             ].properties
+
+            if collection.count_documents({}) == 0:
+                property_store.initialize(dataset(today()))
+                for document in property_store.list_created():
+                    collection.update_one(
+                        {"id": document["id"]},
+                        {"$setOnInsert": document},
+                        upsert=True,
+                    )
 
             return list(
                 collection.find({}, {"_id": 0})
@@ -961,7 +979,7 @@ print(json.dumps(results))
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=120,
+                timeout=300,
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
@@ -997,6 +1015,62 @@ print(json.dumps(results))
                 result["output"] = "El ejercicio terminó sin salida."
 
     return {"results": results}
+
+
+@app.post("/python-exercises/mongodb")
+def run_mongodb_python_exercise(user=Depends(authorized)):
+    mongo_uri = os.getenv("MONGO_URI")
+    if not mongo_uri:
+        raise HTTPException(
+            503,
+            "Configura MONGO_URI en el entorno del backend antes de guardar en MongoDB.",
+        )
+
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "scrips"
+        / "m1"
+        / "p15persistencia_mongodb_rentcontrol.py"
+    )
+    if not script.is_file():
+        raise HTTPException(500, "No se encontró la práctica 15.")
+
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(script)],
+            cwd=script.parent,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(
+            504,
+            "La práctica 15 excedió el tiempo límite de conexión.",
+        ) from exc
+
+    if completed.returncode != 0:
+        details = (completed.stderr or completed.stdout).strip()
+        details = details.replace(mongo_uri, "[MONGO_URI]")[-2000:]
+        raise HTTPException(
+            502,
+            f"No se pudo guardar el reporte en MongoDB: {details}",
+        )
+
+    output = completed.stdout.strip() or "La práctica terminó sin salida."
+    if len(output) > 20000:
+        output = output[:20000] + "\n… salida truncada …"
+
+    return {
+        "result": {
+            "id": script.name,
+            "title": "Práctica 15 · Persistencia MongoDB",
+            "output": output,
+        }
+    }
 
 
 @app.get("/explanations")

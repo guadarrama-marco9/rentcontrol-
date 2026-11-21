@@ -560,12 +560,46 @@ export default function App() {
   async function runPythonExercises() {
     setBusy(true);
     setError('');
+    setPythonResults(null);
 
     try {
       const result = await api(
         '/python-exercises',
       );
+      const requiredExercises = [
+        'p10datos_rentcontrol.py',
+        'p11modelo_supervisado_rentcontrol.py',
+        'p12modelo_kmeans_rentcontrol.py',
+        'p13modelo_pca_rentcontrol.py',
+        'p14motor_recomendaciones_rentcontrol.py',
+      ];
+      const missingExercises = requiredExercises.filter(
+        (id) => !result.results.some((item: any) => item.id === id),
+      );
+      if (missingExercises.length > 0) {
+        throw Error(
+          'El backend está desactualizado y solo devuelve las prácticas anteriores. ' +
+            'Cierra su ventana, vuelve a iniciar INICIAR_BACKEND.cmd y ejecuta otra vez.',
+        );
+      }
       setPythonResults(result.results);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runMongoExercise() {
+    setBusy(true);
+    setError('');
+
+    try {
+      const result = await api('/python-exercises/mongodb', {});
+      setPythonResults((previous) => [
+        ...(previous || []),
+        result.result,
+      ]);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -2547,7 +2581,7 @@ export default function App() {
           <>
             {heading(
               'Resultados de prácticas Python',
-              'Ejecuta las catorce prácticas y consulta aquí sus resultados.',
+              'Ejecuta las prácticas 1–14; sus resultados aparecerán aquí. La práctica 15 tiene un botón separado porque guarda datos en MongoDB.',
             )}
 
             <Card>
@@ -2568,6 +2602,17 @@ export default function App() {
               />
             </Card>
 
+            {pythonResults === null && (
+              <Card>
+                <Text style={s.body}>
+                  Aún no hay resultados en esta sesión.
+                  Pulsa “Ejecutar todas las prácticas” para
+                  generar y mostrar las prácticas, incluidas
+                  RentControl 10–14.
+                </Text>
+              </Card>
+            )}
+
             {pythonResults?.map((result) => (
               <Card key={result.id}>
                 <Text style={s.h2}>
@@ -2581,6 +2626,29 @@ export default function App() {
                 </Text>
               </Card>
             ))}
+
+            <Card>
+              <Text style={s.h2}>
+                Práctica 15 · Persistencia en MongoDB
+              </Text>
+              <Text style={s.body}>
+                Esta acción guarda el reporte de inquilinos en
+                MongoDB. Configura MONGO_URI en el entorno del
+                backend, ejecuta primero las prácticas 10–14 y
+                pulsa el botón solo cuando quieras persistir
+                esos resultados. La colección predeterminada es
+                RentControl (MONGO_COLLECTION).
+              </Text>
+              <Button
+                title={
+                  busy
+                    ? 'Guardando en MongoDB…'
+                    : 'Ejecutar práctica 15 y guardar en MongoDB'
+                }
+                disabled={busy}
+                onPress={runMongoExercise}
+              />
+            </Card>
           </>
         )}
       </ScrollView>

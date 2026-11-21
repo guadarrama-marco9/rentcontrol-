@@ -1,4 +1,4 @@
-import os,unittest,tempfile
+import os,subprocess,unittest,tempfile
 from datetime import timedelta
 from io import BytesIO
 from unittest.mock import patch
@@ -100,7 +100,7 @@ class ApiTests(unittest.TestCase):
         response=self.client.get('/python-exercises')
         self.assertEqual(response.status_code,200)
         results=response.json()['results']
-        self.assertEqual(len(results),14)
+        self.assertEqual(len(results),19)
         self.assertEqual(
             [result['id'] for result in results],
             [
@@ -118,6 +118,11 @@ class ApiTests(unittest.TestCase):
                 'pc07sagmentacionkmeans.py',
                 'p08analisisavanzados.py',
                 'p09pca.py',
+                'p10datos_rentcontrol.py',
+                'p11modelo_supervisado_rentcontrol.py',
+                'p12modelo_kmeans_rentcontrol.py',
+                'p13modelo_pca_rentcontrol.py',
+                'p14motor_recomendaciones_rentcontrol.py',
             ],
         )
         self.assertEqual(results[1]['id'],'p01b_regla_fija_rentcontrol.py')
@@ -125,8 +130,28 @@ class ApiTests(unittest.TestCase):
         self.assertIn('Ruta encontrada:',results[0]['output'])
         self.assertIn('CONJUNTO DE DATOS ORIGINAL',results[2]['output'])
         self.assertNotIn('Departamento Alameda',results[2]['output'])
-        self.assertEqual(results[-1]['id'],'p09pca.py')
-        self.assertIn('PRACTICA 9 FINALIZADA CORRECTAMENTE',results[-1]['output'])
+        self.assertEqual(results[13]['id'],'p09pca.py')
+        self.assertIn('PRACTICA 9 FINALIZADA CORRECTAMENTE',results[13]['output'])
+        self.assertEqual(results[-1]['id'],'p14motor_recomendaciones_rentcontrol.py')
+        self.assertIn('PRACTICA 14: MOTOR DE RECOMENDACIONES',results[-1]['output'])
+    def test_mongodb_practice_requires_configuration(self):
+        with patch.dict(os.environ,{'MONGO_URI':''}):
+            response=self.client.post('/python-exercises/mongodb',json={})
+        self.assertEqual(response.status_code,503)
+    def test_mongodb_practice_returns_output(self):
+        completed=subprocess.CompletedProcess(
+            args=[],returncode=0,stdout='Documentos almacenados: 500',stderr=''
+        )
+        with patch.dict(os.environ,{'MONGO_URI':'mongodb://test'}):
+            with patch('app.main.subprocess.run',return_value=completed) as run:
+                response=self.client.post('/python-exercises/mongodb',json={})
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(
+            response.json()['result']['id'],
+            'p15persistencia_mongodb_rentcontrol.py',
+        )
+        self.assertIn('Documentos almacenados',response.json()['result']['output'])
+        run.assert_called_once()
     def test_access_key(self):
         with patch.dict(os.environ,{'RENTCONTROL_API_KEY':'demo-test'}):
             self.assertEqual(self.client.get('/dashboard').status_code,401)

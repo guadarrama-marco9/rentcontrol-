@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import os
 import secrets
 import sqlite3
 import time
@@ -10,6 +11,48 @@ from pydantic import BaseModel, ConfigDict, Field
 from .property_store import connection
 
 router = APIRouter(prefix="/auth")
+
+
+def mirror_user(user_id, name, email, role):
+    mongo_uri = os.getenv("MONGO_URI")
+    if not mongo_uri:
+        return
+
+    try:
+        from pymongo import MongoClient
+
+        with MongoClient(
+            mongo_uri,
+            serverSelectionTimeoutMS=1500,
+        ) as client:
+            database_name = os.getenv("MONGO_DB", "rentcontrol")
+            db = client[database_name]
+            document = {
+                "id": user_id,
+                "name": name,
+                "email": email.lower(),
+                "role": role,
+            }
+
+            db.users.update_one(
+                {"id": user_id},
+                {"$set": document},
+                upsert=True,
+            )
+
+            target_collection = (
+                db.administradores
+                if role == "admin"
+                else db.inquilinos
+            )
+            target_collection.update_one(
+                {"id": user_id},
+                {"$set": document},
+                upsert=True,
+            )
+    except Exception:
+        # Authentication keeps working with SQLite even if MongoDB is offline.
+        return
 
 
 def database():
@@ -67,6 +110,23 @@ def database():
                 (id, name, email, salt, password, role)
             VALUES (?, ?, ?, ?, ?, 'admin')
         """, previous)
+        mirror_user(
+            previous[0],
+            previous[1],
+            previous[2],
+            "admin",
+        )
+
+    for user in db.execute("""
+        SELECT id, name, email, role
+        FROM users
+    """).fetchall():
+        mirror_user(
+            user[0],
+            user[1],
+            user[2],
+            user[3],
+        )
 
     db.commit()
     return db
@@ -196,6 +256,13 @@ def setup(data: Setup):
                 VALUES (1, ?, ?, ?, ?, 'admin')
             """, values)
 
+        mirror_user(
+            1,
+            data.name,
+            data.email,
+            "admin",
+        )
+
         return {
             "message": "Cuenta administradora creada. Ya puedes iniciar sesión."
         }
@@ -229,7 +296,7 @@ def register(data: Setup):
                 )
 
             # El registro público siempre crea usuarios, nunca administradores.
-            db.execute("""
+            cursor = db.execute("""
                 INSERT INTO users
                     (name, email, salt, password, role)
                 VALUES (?, ?, ?, ?, 'user')
@@ -239,6 +306,13 @@ def register(data: Setup):
                 salt,
                 password_hash,
             ))
+
+        mirror_user(
+            cursor.lastrowid,
+            data.name,
+            data.email,
+            "user",
+        )
 
         return {
             "message": (

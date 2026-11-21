@@ -6,7 +6,7 @@ if not exist ".venv\Scripts\python.exe" (
  pause
  exit /b 1
 )
-set STORAGE=demo
+set "MONGO_URI="
 set AUTH_REQUIRED=1
 set RENTCONTROL_API_KEY=
 set CORS_ORIGINS=http://localhost:8081,http://127.0.0.1:8081
